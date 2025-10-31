@@ -32,6 +32,70 @@ function ask(question) {
   });
 }
 
+const MAX_SINGLE_MESSAGE_LENGTH = 220;
+const MAX_SEGMENT_LENGTH = 140;
+
+function clampText(text, maxLength) {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function normalizeReplyText(text) {
+  return text
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+function splitReplyIntoMessages(rawReply) {
+  if (typeof rawReply !== "string") {
+    return [];
+  }
+  const trimmed = rawReply.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const normalized = normalizeReplyText(trimmed);
+
+  const newlineSegments = trimmed
+    .split(/\n+/)
+    .map((part) => normalizeReplyText(part))
+    .filter(Boolean);
+
+  const punctuationCandidates = normalized
+    .split(/(?<=[.!?…])\s+/u)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const sentenceCandidates = newlineSegments.length > 1 ? newlineSegments : punctuationCandidates;
+
+  if (sentenceCandidates.length < 2) {
+    return [clampText(normalized, MAX_SINGLE_MESSAGE_LENGTH)];
+  }
+
+  const shouldSplitIntoTwo = Math.random() < 0.35;
+
+  if (!shouldSplitIntoTwo) {
+    const combined = clampText(sentenceCandidates.slice(0, 2).join(" "), MAX_SINGLE_MESSAGE_LENGTH);
+    return [combined];
+  }
+
+  const first = clampText(sentenceCandidates[0], MAX_SEGMENT_LENGTH);
+  const second = clampText(sentenceCandidates[1], MAX_SEGMENT_LENGTH);
+
+  const messages = [first];
+  if (second) {
+    messages.push(second);
+  }
+
+  return messages;
+}
+
 async function replyToEvent(event, message, options = {}) {
   if (!message) {
     return;
@@ -174,8 +238,16 @@ async function respondWithAI(event, chatId) {
       keywords: context.keywords,
       instructions: adaptiveInstructions
     });
-    await replyToEvent(event, reply);
-    memory.recordBotMessage(chatId, reply, { via: "auto" });
+    const messages = splitReplyIntoMessages(reply);
+    if (!messages.length) {
+      return;
+    }
+
+    for (let index = 0; index < messages.length; index += 1) {
+      const messageText = messages[index];
+      await replyToEvent(event, messageText);
+      memory.recordBotMessage(chatId, messageText, { via: "auto", segment: index });
+    }
   } catch (error) {
     console.error("AI response failed", error);
     if (config.autoApprove) {

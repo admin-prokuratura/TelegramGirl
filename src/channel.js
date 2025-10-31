@@ -81,10 +81,16 @@ class ChannelManager {
     if (!this.channelId) return;
 
     const recentPosts = this.store ? this.store.getRecent(6) : [];
-    const draft = await this.aiClient.generateChannelPost({
-      personaName: this.personaName,
-      recentPosts
-    });
+    let draft;
+    try {
+      draft = await this.aiClient.generateChannelPost({
+        personaName: this.personaName,
+        recentPosts
+      });
+    } catch (error) {
+      console.error("Failed to generate channel post", error);
+      return;
+    }
 
     const message = draft.trim();
     if (!message) return;

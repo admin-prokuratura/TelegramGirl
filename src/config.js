@@ -6,10 +6,23 @@ dotenv.config();
 
 function requireEnv(name) {
   const value = process.env[name];
-  if (!value) {
+  if (value === undefined || value === null) {
     throw new Error(`Environment variable ${name} is required`);
   }
-  return value;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`Environment variable ${name} cannot be empty`);
+  }
+  return trimmed;
+}
+
+function optionalEnv(name) {
+  const value = process.env[name];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 const dataDir = path.resolve(process.env.MEMORY_DIR || path.join(__dirname, "..", "data"));
@@ -21,21 +34,21 @@ module.exports = {
   apiId: Number(requireEnv("TELEGRAM_API_ID")),
   apiHash: requireEnv("TELEGRAM_API_HASH"),
   huggingFaceApiKey: requireEnv("HUGGINGFACE_API_KEY"),
-  huggingFaceModel: process.env.HUGGINGFACE_MODEL || "mistralai/Mistral-7B-Instruct-v0.2",
-  personaName: process.env.PERSONA_NAME || "Лена",
+  huggingFaceModel: optionalEnv("HUGGINGFACE_MODEL") || "mistralai/Mistral-7B-Instruct-v0.2",
+  personaName: optionalEnv("PERSONA_NAME") || "Лена",
   personaDescription:
-    process.env.PERSONA_DESCRIPTION ||
+    optionalEnv("PERSONA_DESCRIPTION") ||
     "Ты современная умная девушка, понимающая русскую культуру, любящая общение и поддержку собеседника. Будь теплой, слегка игривой, но уважительной.",
-  proactiveIntervalMs: Number(process.env.PROACTIVE_INTERVAL_MS || 1000 * 60 * 15),
-  inactivityThresholdMs: Number(process.env.INACTIVITY_THRESHOLD_MS || 1000 * 60 * 45),
-  memoryFile: path.join(dataDir, process.env.MEMORY_FILE || "memory.json"),
-  sessionString: process.env.TELEGRAM_SESSION || "",
-  phoneNumber: process.env.TELEGRAM_PHONE_NUMBER,
-  password: process.env.TELEGRAM_PASSWORD,
+  proactiveIntervalMs: Number(optionalEnv("PROACTIVE_INTERVAL_MS") || 1000 * 60 * 15),
+  inactivityThresholdMs: Number(optionalEnv("INACTIVITY_THRESHOLD_MS") || 1000 * 60 * 45),
+  memoryFile: path.join(dataDir, optionalEnv("MEMORY_FILE") || "memory.json"),
+  sessionString: optionalEnv("TELEGRAM_SESSION") || "",
+  phoneNumber: optionalEnv("TELEGRAM_PHONE_NUMBER"),
+  password: optionalEnv("TELEGRAM_PASSWORD"),
   autoApprove: process.env.AUTO_APPROVE_MESSAGES === "true",
   personalChannelId: process.env.PERSONAL_CHANNEL_ID || "",
-  channelPostIntervalMs: Number(process.env.CHANNEL_POST_INTERVAL_MS || 1000 * 60 * 60 * 6),
-  channelMemoryFile: path.join(dataDir, process.env.CHANNEL_MEMORY_FILE || "channel.json"),
-  selfTrainingIntervalMs: Number(process.env.SELF_TRAINING_INTERVAL_MS || 1000 * 60 * 30),
-  selfTrainingMinMessages: Number(process.env.SELF_TRAINING_MIN_MESSAGES || 12)
+  channelPostIntervalMs: Number(optionalEnv("CHANNEL_POST_INTERVAL_MS") || 1000 * 60 * 60 * 6),
+  channelMemoryFile: path.join(dataDir, optionalEnv("CHANNEL_MEMORY_FILE") || "channel.json"),
+  selfTrainingIntervalMs: Number(optionalEnv("SELF_TRAINING_INTERVAL_MS") || 1000 * 60 * 30),
+  selfTrainingMinMessages: Number(optionalEnv("SELF_TRAINING_MIN_MESSAGES") || 12)
 };

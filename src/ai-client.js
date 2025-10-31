@@ -122,7 +122,10 @@ class AIClient {
     }
 
     const data = await response.json();
-    const choice = data.choices?.[0]?.message?.content;
+    const choices = (data && data.choices) || [];
+    const firstChoice = choices.length > 0 ? choices[0] : null;
+    const message = firstChoice && firstChoice.message ? firstChoice.message : null;
+    const choice = message && message.content ? message.content : null;
     if (!choice) {
       throw new Error("OpenAI response did not contain any content");
     }

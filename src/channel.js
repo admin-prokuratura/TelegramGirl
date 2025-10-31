@@ -1,4 +1,7 @@
 const fs = require("fs");
+const path = require("path");
+
+const ALLOWED_PHOTO_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
 
 class ChannelStore {
   constructor(filePath) {
@@ -49,13 +52,14 @@ class ChannelStore {
 }
 
 class ChannelManager {
-  constructor({ client, aiClient, channelId, intervalMs, personaName, store }) {
+  constructor({ client, aiClient, channelId, intervalMs, personaName, store, photoDirectory }) {
     this.client = client;
     this.aiClient = aiClient;
     this.channelId = channelId;
     this.intervalMs = intervalMs;
     this.personaName = personaName;
     this.store = store;
+    this.photoDirectory = photoDirectory;
     this.timer = null;
     this.channelEntityPromise = null;
   }
@@ -91,11 +95,22 @@ class ChannelManager {
 
     try {
       const entity = await this._getChannelEntity();
-      await this.client.sendMessage(entity, { message });
+      const photoPath = this._pickPhoto();
+      await this.client.sendMessage(entity, photoPath ? { message, file: photoPath } : { message });
       if (this.store) {
-        this.store.recordPost(message);
+        const meta = {};
+        if (photoPath) {
+          meta.photo = path.basename(photoPath);
+        }
+        this.store.recordPost(message, meta);
       }
-      console.log(`Channel post published: ${message.slice(0, 40)}...`);
+      if (photoPath) {
+        console.log(
+          `Channel post with photo published: ${message.slice(0, 40)}... (${path.basename(photoPath)})`
+        );
+      } else {
+        console.log(`Channel post published: ${message.slice(0, 40)}...`);
+      }
     } catch (error) {
       console.error("Failed to post to channel", error);
     }
@@ -106,6 +121,29 @@ class ChannelManager {
       this.channelEntityPromise = this.client.getEntity(this.channelId);
     }
     return this.channelEntityPromise;
+  }
+
+  _pickPhoto() {
+    if (!this.photoDirectory) {
+      return null;
+    }
+
+    try {
+      const entries = fs.readdirSync(this.photoDirectory, { withFileTypes: true });
+      const images = entries
+        .filter((entry) => entry.isFile() && ALLOWED_PHOTO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+        .map((entry) => entry.name);
+
+      if (!images.length) {
+        return null;
+      }
+
+      const randomIndex = Math.floor(Math.random() * images.length);
+      return path.join(this.photoDirectory, images[randomIndex]);
+    } catch (error) {
+      console.error("Failed to read channel photo directory", error);
+      return null;
+    }
   }
 }
 

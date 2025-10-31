@@ -1,0 +1,22 @@
+{
+  "name": "telegram-girl-bot",
+  "version": "1.0.0",
+  "description": "Autonomous Telegram companion bot built with GramJS and OpenAI",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "telegram",
+    "gramjs",
+    "chatbot",
+    "openai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "gramjs": "^1.20.1",
+    "node-fetch": "^3.3.2"
+  }
+}

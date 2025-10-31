@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.session
+sessions/
+data/memory.json
+.DS_Store

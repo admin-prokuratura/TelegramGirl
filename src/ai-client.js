@@ -128,12 +128,12 @@ class AIClient {
     let lastError;
     for (const candidate of this.modelCandidates) {
       this._setActiveModel(candidate);
-      console.log("[HF CALL]", {
-        endpoint: this.endpoint,
-        model: this.model,
-        keyLen: this.apiKey.length
-      });
       try {
+        console.log("[HF CALL]", {
+          endpoint: this._buildEndpoint("chat"),
+          model: this.model,
+          keyLen: this.apiKey.length
+        });
         return await this._callHuggingFace(prompt, parameters);
       } catch (error) {
         lastError = error;
@@ -150,37 +150,22 @@ class AIClient {
   }
 
   async _callHuggingFace(prompt, parameters = {}) {
-    const body = this._buildChatCompletionBody(prompt, parameters);
-
-    const response = await fetchFn(this.endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify(body)
-    });
-
-    const text = await response.text();
-    if (!response.ok) {
-      const error = new Error(
-        response.status === 404
-          ? `Hugging Face router: модель "${this.model}" недоступна у провайдеров Serverless. Попробуйте другую модель из каталога Inference Providers или разверните собственный Endpoint. Raw response: ${text}`
-          : `Hugging Face request failed: ${response.status} ${text}`
-      );
-      error.status = response.status;
-      error.model = this.model;
-      error.responseBody = text;
+    try {
+      return await this._callChatCompletion(prompt, parameters);
+    } catch (error) {
+      if (this._isModelNotSupportedError(error)) {
+        console.warn(
+          `Model ${this.model} does not support chat completions. Retrying with text completions endpoint...`
+        );
+        return await this._callTextCompletion(prompt, parameters);
+      }
       throw error;
     }
+  }
 
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (error) {
-      throw new Error(`Unexpected Hugging Face response: ${text}`);
-    }
+  async _callChatCompletion(prompt, parameters = {}) {
+    const body = this._buildChatCompletionBody(prompt, parameters);
+    const data = await this._sendHuggingFaceRequest(this._buildEndpoint("chat"), body);
 
     const choices = data && Array.isArray(data.choices) ? data.choices : [];
     const firstChoice = choices.length > 0 ? choices[0] : undefined;
@@ -191,7 +176,7 @@ class AIClient {
         ? firstChoice.message.content
         : undefined;
     if (typeof content !== "string" || !content.trim()) {
-      throw new Error(`Hugging Face response missing message content: ${text}`);
+      throw new Error(`Hugging Face response missing message content: ${JSON.stringify(data)}`);
     }
 
     return content;
@@ -215,6 +200,87 @@ class AIClient {
     return this._removeUndefined(payload);
   }
 
+  _buildTextCompletionBody(prompt, parameters = {}) {
+    const { max_new_tokens, stop, ...rest } = parameters || {};
+    const payload = {
+      model: this.model,
+      prompt,
+      ...rest
+    };
+
+    if (typeof max_new_tokens === "number") {
+      payload.max_tokens = max_new_tokens;
+    }
+    if (stop !== undefined) {
+      payload.stop = stop;
+    }
+
+    return this._removeUndefined(payload);
+  }
+
+  async _callTextCompletion(prompt, parameters = {}) {
+    console.log("[HF CALL]", {
+      endpoint: this._buildEndpoint("completion"),
+      model: this.model,
+      keyLen: this.apiKey.length
+    });
+    const body = this._buildTextCompletionBody(prompt, parameters);
+    const data = await this._sendHuggingFaceRequest(this._buildEndpoint("completion"), body);
+
+    const choices = data && Array.isArray(data.choices) ? data.choices : [];
+    const firstChoice = choices.length > 0 ? choices[0] : undefined;
+    const content = firstChoice && typeof firstChoice.text === "string" ? firstChoice.text : undefined;
+    if (typeof content !== "string" || !content.trim()) {
+      throw new Error(`Hugging Face text completion response missing content: ${JSON.stringify(data)}`);
+    }
+
+    return content;
+  }
+
+  async _sendHuggingFaceRequest(endpoint, body) {
+    const response = await fetchFn(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      const parseError = new Error(`Unexpected Hugging Face response: ${text}`);
+      parseError.status = response.status;
+      parseError.model = this.model;
+      parseError.responseBody = text;
+      throw parseError;
+    }
+
+    if (!response.ok) {
+      const message =
+        response.status === 404
+          ? `Hugging Face router: модель "${this.model}" недоступна у провайдеров Serverless. Попробуйте другую модель из каталога Inference Providers или разверните собственный Endpoint. Raw response: ${text}`
+          : data && data.error && data.error.message
+          ? data.error.message
+          : `Hugging Face request failed: ${response.status} ${text}`;
+      const error = new Error(message);
+      error.status = response.status;
+      error.model = this.model;
+      error.responseBody = text;
+      if (data && data.error) {
+        error.code = data.error.code;
+        error.hfError = data.error;
+      }
+      throw error;
+    }
+
+    return data;
+  }
+
   _removeUndefined(obj) {
     return Object.fromEntries(
       Object.entries(obj).filter(([, value]) => value !== undefined && value !== null)
@@ -233,11 +299,11 @@ class AIClient {
   _setActiveModel(model) {
     const normalized = this._normalizeModelName(model);
     this.model = normalized;
-    this.endpoint = this._buildEndpoint();
   }
 
-  _buildEndpoint() {
-    return `${HF_ROUTER_BASE_URL}/chat/completions`;
+  _buildEndpoint(type = "chat") {
+    const path = type === "completion" ? "/completions" : "/chat/completions";
+    return `${HF_ROUTER_BASE_URL}${path}`;
   }
 
   _dedupeModels(models = []) {
@@ -263,6 +329,16 @@ class AIClient {
 
     const currentIndex = this.modelCandidates.indexOf(currentModel);
     return currentIndex !== -1 && currentIndex < this.modelCandidates.length - 1;
+  }
+
+  _isModelNotSupportedError(error) {
+    return (
+      error &&
+      typeof error.status === "number" &&
+      error.status === 400 &&
+      (error.code === "model_not_supported" ||
+        (typeof error.responseBody === "string" && error.responseBody.includes("model_not_supported")))
+    );
   }
 }
 

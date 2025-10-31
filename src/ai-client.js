@@ -2,7 +2,7 @@ const fetchFn = global.fetch
   ? (...args) => global.fetch(...args)
   : (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
-const { DEFAULT_HUGGINGFACE_MODEL } = require("./constants");
+const { DEFAULT_HUGGINGFACE_MODEL, resolveHuggingFaceModelName } = require("./constants");
 
 const DEFAULT_MODEL = DEFAULT_HUGGINGFACE_MODEL;
 
@@ -11,8 +11,8 @@ class AIClient {
     this.apiKey = apiKey;
     this.personaName = personaName;
     this.personaDescription = personaDescription;
-    const resolvedModel = typeof model === "string" && model.trim() ? model.trim() : DEFAULT_MODEL;
-    this.model = resolvedModel;
+    const requestedModel = typeof model === "string" && model.trim() ? model.trim() : DEFAULT_MODEL;
+    this.model = resolveHuggingFaceModelName(requestedModel);
     const encodedModel = this.model
       .split("/")
       .filter(Boolean)

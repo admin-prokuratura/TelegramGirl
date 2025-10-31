@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const dotenv = require("dotenv");
 
-const { DEFAULT_HUGGINGFACE_MODEL } = require("./constants");
+const { DEFAULT_HUGGINGFACE_MODEL, resolveHuggingFaceModelName } = require("./constants");
 
 dotenv.config();
 
@@ -32,11 +32,13 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
+const envModel = optionalEnv("HUGGINGFACE_MODEL");
+
 module.exports = {
   apiId: Number(requireEnv("TELEGRAM_API_ID")),
   apiHash: requireEnv("TELEGRAM_API_HASH"),
   huggingFaceApiKey: requireEnv("HUGGINGFACE_API_KEY"),
-  huggingFaceModel: optionalEnv("HUGGINGFACE_MODEL") || DEFAULT_HUGGINGFACE_MODEL,
+  huggingFaceModel: resolveHuggingFaceModelName(envModel || DEFAULT_HUGGINGFACE_MODEL),
   personaName: optionalEnv("PERSONA_NAME") || "Лена",
   personaDescription:
     optionalEnv("PERSONA_DESCRIPTION") ||

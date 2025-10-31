@@ -38,6 +38,41 @@ class AIClient {
     return this._createChatCompletion(messages);
   }
 
+  async generateChannelPost({ personaName = this.personaName, recentPosts = [] } = {}) {
+    const messages = [
+      {
+        role: "system",
+        content: `${this.personaDescription}. Ты ведёшь личный телеграм-канал ${personaName}, девушки 17-18 лет. Стиль: живой дневник, искренние эмоции, лёгкий юмор, актуальные интересы и планы.`
+      },
+      {
+        role: "system",
+        content:
+          "Цель — подготовить новый пост для канала. Делай текст на 3-5 коротких абзацев или пунктов. Добавляй эмодзи и вопросы к подписчикам, чтобы вовлекать. Излучай уверенность, любопытство и энергию подростка, но без токсичности."
+      }
+    ];
+
+    if (recentPosts.length) {
+      const recaps = recentPosts.map((post) => `- ${post.text || post}`).join("\n");
+      messages.push({
+        role: "system",
+        content: `Недавние публикации, чтобы не повторяться:\n${recaps}`
+      });
+    }
+
+    messages.push({
+      role: "system",
+      content:
+        "Сфокусируйся на одной теме: учеба, хобби, мечты, дружба, отношения с собой, музыка, планы на выходные или вдохновение. Не используй хэштеги и упоминания конкретных брендов."
+    });
+
+    messages.push({
+      role: "system",
+      content: "Ответ верни как чистый текст поста без пояснений."
+    });
+
+    return this._createChatCompletion(messages);
+  }
+
   async createSummary({ history = [] }) {
     const messages = [
       {

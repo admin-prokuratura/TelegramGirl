@@ -37,13 +37,18 @@ async function replyToEvent(event, message, options = {}) {
     return;
   }
 
-  if (event?.message?.reply && typeof event.message.reply === "function") {
+  if (
+    event &&
+    event.message &&
+    event.message.reply &&
+    typeof event.message.reply === "function"
+  ) {
     await event.message.reply({ message, ...options });
     return;
   }
 
-  const client = event?.client;
-  const getInputChat = event?.message?.getInputChat;
+  const client = event && event.client;
+  const getInputChat = event && event.message && event.message.getInputChat;
 
   if (!client || typeof getInputChat !== "function") {
     throw new Error("Unable to respond: Telegram client context is missing");

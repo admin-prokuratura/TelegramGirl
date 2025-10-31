@@ -2,13 +2,21 @@ const fetchFn = global.fetch
   ? (...args) => global.fetch(...args)
   : (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
+const DEFAULT_MODEL = "mistralai/Mistral-7B-Instruct-v0.2";
+
 class AIClient {
   constructor({ apiKey, personaName, personaDescription, model }) {
     this.apiKey = apiKey;
     this.personaName = personaName;
     this.personaDescription = personaDescription;
-    this.model = model || "mistralai/Mistral-7B-Instruct-v0.2";
-    this.endpoint = `https://api-inference.huggingface.co/models/${this.model}`;
+    const resolvedModel = typeof model === "string" && model.trim() ? model.trim() : DEFAULT_MODEL;
+    this.model = resolvedModel;
+    const encodedModel = this.model
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    this.endpoint = `https://api-inference.huggingface.co/models/${encodedModel}`;
   }
 
   async generateReply({ history = [], summary, keywords, mood = "дружелюбное", instructions = "" }) {
@@ -119,6 +127,11 @@ class AIClient {
 
     const text = await response.text();
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(
+          `Hugging Face model "${this.model}" not found or unavailable. Verify HUGGINGFACE_MODEL and access permissions. Raw response: ${text}`
+        );
+      }
       throw new Error(`Hugging Face request failed: ${response.status} ${text}`);
     }
 

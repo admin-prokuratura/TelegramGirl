@@ -2,7 +2,11 @@ const fetchFn = global.fetch
   ? (...args) => global.fetch(...args)
   : (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
-const { DEFAULT_HUGGINGFACE_MODEL, resolveHuggingFaceModelName } = require("./constants");
+const {
+  DEFAULT_HUGGINGFACE_MODEL,
+  HUGGINGFACE_MODEL_FALLBACKS,
+  resolveHuggingFaceModelName
+} = require("./constants");
 
 const DEFAULT_MODEL = DEFAULT_HUGGINGFACE_MODEL;
 
@@ -12,13 +16,12 @@ class AIClient {
     this.personaName = personaName;
     this.personaDescription = personaDescription;
     const requestedModel = typeof model === "string" && model.trim() ? model.trim() : DEFAULT_MODEL;
-    this.model = resolveHuggingFaceModelName(requestedModel);
-    const encodedModel = this.model
-      .split("/")
-      .filter(Boolean)
-      .map((segment) => encodeURIComponent(segment))
-      .join("/");
-    this.endpoint = `https://api-inference.huggingface.co/models/${encodedModel}`;
+    const resolvedRequestedModel = resolveHuggingFaceModelName(requestedModel);
+    this.modelCandidates = this._dedupeModels([resolvedRequestedModel, ...HUGGINGFACE_MODEL_FALLBACKS]);
+    if (!this.modelCandidates.length) {
+      throw new Error("No valid Hugging Face models configured. Provide at least one model name.");
+    }
+    this._setActiveModel(this.modelCandidates[0]);
   }
 
   async generateReply({ history = [], summary, keywords, mood = "дружелюбное", instructions = "" }) {
@@ -114,6 +117,26 @@ class AIClient {
   }
 
   async _generateText(prompt, parameters = {}) {
+    let lastError;
+    for (const candidate of this.modelCandidates) {
+      this._setActiveModel(candidate);
+      try {
+        return await this._callHuggingFace(prompt, parameters);
+      } catch (error) {
+        lastError = error;
+        if (!this._shouldRetryWithFallback(error, candidate)) {
+          throw error;
+        }
+        console.warn(
+          `Model ${candidate} failed with status ${error.status || "unknown"}. Trying next fallback model...`
+        );
+      }
+    }
+
+    throw lastError;
+  }
+
+  async _callHuggingFace(prompt, parameters = {}) {
     const response = await fetchFn(this.endpoint, {
       method: "POST",
       headers: {
@@ -129,12 +152,15 @@ class AIClient {
 
     const text = await response.text();
     if (!response.ok) {
-      if (response.status === 404) {
-        throw new Error(
-          `Hugging Face model "${this.model}" not found or unavailable. Verify HUGGINGFACE_MODEL and access permissions. Raw response: ${text}`
-        );
-      }
-      throw new Error(`Hugging Face request failed: ${response.status} ${text}`);
+      const error = new Error(
+        response.status === 404
+          ? `Hugging Face model "${this.model}" not found or unavailable. Verify HUGGINGFACE_MODEL and access permissions. Raw response: ${text}`
+          : `Hugging Face request failed: ${response.status} ${text}`
+      );
+      error.status = response.status;
+      error.model = this.model;
+      error.responseBody = text;
+      throw error;
     }
 
     let data;
@@ -161,6 +187,38 @@ class AIClient {
       return text.slice(start, end + 1);
     }
     return text;
+  }
+
+  _setActiveModel(model) {
+    this.model = model;
+    this.endpoint = this._buildEndpoint(model);
+  }
+
+  _buildEndpoint(model) {
+    const encodedModel = model
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    return `https://api-inference.huggingface.co/models/${encodedModel}`;
+  }
+
+  _dedupeModels(models = []) {
+    return Array.from(new Set(models.filter((value) => typeof value === "string" && value.trim())));
+  }
+
+  _shouldRetryWithFallback(error, currentModel) {
+    if (!error || typeof error.status !== "number") {
+      return false;
+    }
+
+    const retryableStatuses = new Set([401, 403, 404, 408, 422, 429, 500, 502, 503, 504]);
+    if (!retryableStatuses.has(error.status)) {
+      return false;
+    }
+
+    const currentIndex = this.modelCandidates.indexOf(currentModel);
+    return currentIndex !== -1 && currentIndex < this.modelCandidates.length - 1;
   }
 }
 

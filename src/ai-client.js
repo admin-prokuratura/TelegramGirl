@@ -2,7 +2,9 @@ const fetchFn = global.fetch
   ? (...args) => global.fetch(...args)
   : (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
-const DEFAULT_MODEL = "mistralai/Mistral-7B-Instruct-v0.2";
+const { DEFAULT_HUGGINGFACE_MODEL } = require("./constants");
+
+const DEFAULT_MODEL = DEFAULT_HUGGINGFACE_MODEL;
 
 class AIClient {
   constructor({ apiKey, personaName, personaDescription, model }) {

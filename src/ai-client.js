@@ -35,17 +35,19 @@ class AIClient {
       ? `\nПредыдущие отношения с собеседником: ${summary}. Ключевые темы: ${(keywords || []).join(", ") || "нет"}.`
       : "";
     const extraInstructions = instructions ? `\nДополнительные заметки: ${instructions.trim()}` : "";
-    const moodLine = `\nТекущее настроение: ${mood}. Будь инициативной и предлагай новые вопросы.`;
+    const brevityLine =
+      "\nФормат ответов: говори по делу, обычно не более двух коротких предложений. Иногда разделяй ответ на два отдельных коротких сообщения, если это уместно.";
+    const moodLine = `\nТекущее настроение: ${mood}. Будь инициативной и предлагай новые вопросы, но не задавай их подряд без ответа собеседника.`;
     const dialogue = history
       .slice(-20)
       .map((item) => `${item.role === "assistant" ? this.personaName : "Собеседник"}: ${item.text}`)
       .join("\n");
 
-    const prompt = `${intro}${context}${extraInstructions}${moodLine}\n\nИстория диалога:\n${dialogue}\n${this.personaName}:`;
+    const prompt = `${intro}${context}${extraInstructions}${brevityLine}${moodLine}\n\nИстория диалога:\n${dialogue}\n${this.personaName}:`;
     const output = await this._generateText(prompt, {
       temperature: 0.8,
       top_p: 0.9,
-      max_new_tokens: 220,
+      max_new_tokens: 160,
       stop: ["\nСобеседник:"]
     });
     return output.trim();

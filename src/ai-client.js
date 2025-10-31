@@ -9,6 +9,7 @@ const {
 } = require("./constants");
 
 const DEFAULT_MODEL = DEFAULT_HUGGINGFACE_MODEL;
+const HF_ROUTER_BASE_URL = "https://router.huggingface.co/v1";
 
 class AIClient {
   constructor({ apiKey, personaName, personaDescription, model }) {
@@ -149,6 +150,8 @@ class AIClient {
   }
 
   async _callHuggingFace(prompt, parameters = {}) {
+    const body = this._buildChatCompletionBody(prompt, parameters);
+
     const response = await fetchFn(this.endpoint, {
       method: "POST",
       headers: {
@@ -156,18 +159,14 @@ class AIClient {
         "Content-Type": "application/json",
         Accept: "application/json"
       },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters,
-        options: { wait_for_model: true }
-      })
+      body: JSON.stringify(body)
     });
 
     const text = await response.text();
     if (!response.ok) {
       const error = new Error(
         response.status === 404
-          ? `Hugging Face model "${this.model}" not found or unavailable. Verify HUGGINGFACE_MODEL and access permissions. Raw response: ${text}`
+          ? `Hugging Face router: модель "${this.model}" недоступна у провайдеров Serverless. Попробуйте другую модель из каталога Inference Providers или разверните собственный Endpoint. Raw response: ${text}`
           : `Hugging Face request failed: ${response.status} ${text}`
       );
       error.status = response.status;
@@ -183,14 +182,36 @@ class AIClient {
       throw new Error(`Unexpected Hugging Face response: ${text}`);
     }
 
-    const outputs = Array.isArray(data) ? data : data && data.generated_text ? [data] : [];
-    if (!outputs.length || !outputs[0].generated_text) {
-      throw new Error(`Hugging Face response missing generated_text: ${text}`);
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== "string" || !content.trim()) {
+      throw new Error(`Hugging Face response missing message content: ${text}`);
     }
 
-    const generated = outputs[0].generated_text;
-    const stripped = generated.startsWith(prompt) ? generated.slice(prompt.length) : generated;
-    return stripped;
+    return content;
+  }
+
+  _buildChatCompletionBody(prompt, parameters = {}) {
+    const { max_new_tokens, stop, ...rest } = parameters || {};
+    const payload = {
+      model: this.model,
+      messages: [{ role: "user", content: prompt }],
+      ...rest
+    };
+
+    if (typeof max_new_tokens === "number") {
+      payload.max_tokens = max_new_tokens;
+    }
+    if (stop !== undefined) {
+      payload.stop = stop;
+    }
+
+    return this._removeUndefined(payload);
+  }
+
+  _removeUndefined(obj) {
+    return Object.fromEntries(
+      Object.entries(obj).filter(([, value]) => value !== undefined && value !== null)
+    );
   }
 
   _extractJson(text) {
@@ -205,16 +226,11 @@ class AIClient {
   _setActiveModel(model) {
     const normalized = this._normalizeModelName(model);
     this.model = normalized;
-    this.endpoint = this._buildEndpoint(normalized);
+    this.endpoint = this._buildEndpoint();
   }
 
-  _buildEndpoint(model) {
-    const encodedModel = model
-      .split("/")
-      .filter(Boolean)
-      .map((segment) => encodeURIComponent(segment))
-      .join("/");
-    return `https://api-inference.huggingface.co/models/${encodedModel}`;
+  _buildEndpoint() {
+    return `${HF_ROUTER_BASE_URL}/chat/completions`;
   }
 
   _dedupeModels(models = []) {

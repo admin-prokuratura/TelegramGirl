@@ -12,12 +12,16 @@ const DEFAULT_MODEL = DEFAULT_HUGGINGFACE_MODEL;
 
 class AIClient {
   constructor({ apiKey, personaName, personaDescription, model }) {
-    this.apiKey = apiKey;
+    this.apiKey = typeof apiKey === "string" ? apiKey.trim() : "";
     this.personaName = personaName;
     this.personaDescription = personaDescription;
     const requestedModel = typeof model === "string" && model.trim() ? model.trim() : DEFAULT_MODEL;
     const resolvedRequestedModel = resolveHuggingFaceModelName(requestedModel);
-    this.modelCandidates = this._dedupeModels([resolvedRequestedModel, ...HUGGINGFACE_MODEL_FALLBACKS]);
+    const normalizedPrimary = this._normalizeModelName(resolvedRequestedModel);
+    const normalizedFallbacks = HUGGINGFACE_MODEL_FALLBACKS.map((fallback) =>
+      this._normalizeModelName(resolveHuggingFaceModelName(fallback))
+    );
+    this.modelCandidates = this._dedupeModels([normalizedPrimary, ...normalizedFallbacks]);
     if (!this.modelCandidates.length) {
       throw new Error("No valid Hugging Face models configured. Provide at least one model name.");
     }
@@ -117,9 +121,17 @@ class AIClient {
   }
 
   async _generateText(prompt, parameters = {}) {
+    if (!this.apiKey) {
+      throw new Error("Hugging Face key is empty (HUGGINGFACE_API_KEY).");
+    }
     let lastError;
     for (const candidate of this.modelCandidates) {
       this._setActiveModel(candidate);
+      console.log("[HF CALL]", {
+        endpoint: this.endpoint,
+        model: this.model,
+        keyLen: this.apiKey.length
+      });
       try {
         return await this._callHuggingFace(prompt, parameters);
       } catch (error) {
@@ -141,7 +153,8 @@ class AIClient {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        Accept: "application/json"
       },
       body: JSON.stringify({
         inputs: prompt,
@@ -190,8 +203,9 @@ class AIClient {
   }
 
   _setActiveModel(model) {
-    this.model = model;
-    this.endpoint = this._buildEndpoint(model);
+    const normalized = this._normalizeModelName(model);
+    this.model = normalized;
+    this.endpoint = this._buildEndpoint(normalized);
   }
 
   _buildEndpoint(model) {
@@ -205,6 +219,13 @@ class AIClient {
 
   _dedupeModels(models = []) {
     return Array.from(new Set(models.filter((value) => typeof value === "string" && value.trim())));
+  }
+
+  _normalizeModelName(name) {
+    if (typeof name !== "string") {
+      return "";
+    }
+    return name.trim().replace(/^\/+|\/+$/g, "");
   }
 
   _shouldRetryWithFallback(error, currentModel) {

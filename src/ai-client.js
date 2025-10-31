@@ -3,133 +3,149 @@ const fetchFn = global.fetch
   : (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 class AIClient {
-  constructor({ apiKey, personaName, personaDescription }) {
+  constructor({ apiKey, personaName, personaDescription, model }) {
     this.apiKey = apiKey;
     this.personaName = personaName;
     this.personaDescription = personaDescription;
-    this.model = process.env.OPENAI_MODEL || "gpt-3.5-turbo";
+    this.model = model || "mistralai/Mistral-7B-Instruct-v0.2";
+    this.endpoint = `https://api-inference.huggingface.co/models/${this.model}`;
   }
 
   async generateReply({ history = [], summary, keywords, mood = "дружелюбное", instructions = "" }) {
-    const messages = [
-      {
-        role: "system",
-        content: `${this.personaDescription}. Твоё имя ${this.personaName}. Отвечай на русском языке. Поддерживай тёплый, уверенный и инициативный тон.`
-      }
-    ];
+    const intro = `${this.personaDescription}. Твоё имя ${this.personaName}. Отвечай на русском языке, поддерживай тёплый и уверенный тон.`;
+    const context = summary
+      ? `\nПредыдущие отношения с собеседником: ${summary}. Ключевые темы: ${(keywords || []).join(", ") || "нет"}.`
+      : "";
+    const extraInstructions = instructions ? `\nДополнительные заметки: ${instructions.trim()}` : "";
+    const moodLine = `\nТекущее настроение: ${mood}. Будь инициативной и предлагай новые вопросы.`;
+    const dialogue = history
+      .slice(-20)
+      .map((item) => `${item.role === "assistant" ? this.personaName : "Собеседник"}: ${item.text}`)
+      .join("\n");
 
-    if (summary) {
-      messages.push({
-        role: "system",
-        content: `Предыдущие отношения с собеседником: ${summary}. Ключевые темы: ${(keywords || []).join(", ")}`
-      });
-    }
-
-    history.slice(-20).forEach((item) => {
-      messages.push({ role: item.role === "assistant" ? "assistant" : "user", content: item.text });
+    const prompt = `${intro}${context}${extraInstructions}${moodLine}\n\nИстория диалога:\n${dialogue}\n${this.personaName}:`;
+    const output = await this._generateText(prompt, {
+      temperature: 0.8,
+      top_p: 0.9,
+      max_new_tokens: 220,
+      stop: ["\nСобеседник:"]
     });
-
-    if (instructions) {
-      messages.push({ role: "system", content: instructions });
-    }
-
-    messages.push({ role: "system", content: `Текущее настроение: ${mood}. Будь инициативной, предлагай темы и вопросы.` });
-
-    return this._createChatCompletion(messages);
+    return output.trim();
   }
 
   async generateChannelPost({ personaName = this.personaName, recentPosts = [] } = {}) {
-    const messages = [
-      {
-        role: "system",
-        content: `${this.personaDescription}. Ты ведёшь личный телеграм-канал ${personaName}, девушки 17-18 лет. Стиль: живой дневник, искренние эмоции, лёгкий юмор, актуальные интересы и планы.`
-      },
-      {
-        role: "system",
-        content:
-          "Цель — подготовить новый пост для канала. Делай текст на 3-5 коротких абзацев или пунктов. Добавляй эмодзи и вопросы к подписчикам, чтобы вовлекать. Излучай уверенность, любопытство и энергию подростка, но без токсичности."
-      }
-    ];
+    const recap = recentPosts.length
+      ? `\nНе повторяйся с последними публикациями:\n${recentPosts.map((post) => `- ${post.text || post}`).join("\n")}`
+      : "";
 
-    if (recentPosts.length) {
-      const recaps = recentPosts.map((post) => `- ${post.text || post}`).join("\n");
-      messages.push({
-        role: "system",
-        content: `Недавние публикации, чтобы не повторяться:\n${recaps}`
-      });
-    }
+    const prompt = `${this.personaDescription}. Ты ведёшь личный телеграм-канал ${personaName}, девушки 17-18 лет.
+Стиль: живой дневник, искренние эмоции, лёгкий юмор и актуальные планы.${recap}
+Сфокусируйся на одной теме: учёба, хобби, мечты, дружба, отношения с собой, музыка, планы на выходные или вдохновение.
+Сделай 3-5 коротких абзацев, добавь эмодзи и вопросы к подписчикам. Не используй хэштеги и бренды.
+Верни только готовый текст поста без пояснений.\n\nТекст:`;
 
-    messages.push({
-      role: "system",
-      content:
-        "Сфокусируйся на одной теме: учеба, хобби, мечты, дружба, отношения с собой, музыка, планы на выходные или вдохновение. Не используй хэштеги и упоминания конкретных брендов."
+    const output = await this._generateText(prompt, {
+      temperature: 0.75,
+      top_p: 0.92,
+      max_new_tokens: 260
     });
-
-    messages.push({
-      role: "system",
-      content: "Ответ верни как чистый текст поста без пояснений."
-    });
-
-    return this._createChatCompletion(messages);
+    return output.trim();
   }
 
   async createSummary({ history = [] }) {
-    const messages = [
-      {
-        role: "system",
-        content:
-          "Ты аналитический помощник. Сформулируй краткое описание отношений, интересов и настроения собеседника в 3-4 предложениях. Также перечисли 3-5 ключевых тем (keywords) через запятую. Ответ верни в формате JSON: {\"summary\":\"...\",\"keywords\":[\"...\"]}."
-      }
-    ];
+    const dialogue = history
+      .slice(-50)
+      .map((item) => `${item.role === "assistant" ? this.personaName : "Собеседник"}: ${item.text}`)
+      .join("\n");
 
-    history.slice(-50).forEach((item) => {
-      messages.push({ role: item.role === "assistant" ? "assistant" : "user", content: item.text });
+    const prompt = `Ты аналитический помощник. На основе истории переписки составь краткое описание отношений, интересов и настроения собеседника в 3-4 предложениях. Также перечисли 3-5 ключевых тем (keywords) через запятую.
+Верни ответ строго в формате JSON: {\"summary\":\"...\",\"keywords\":[\"...\"]}. Если данных мало, используй пустые значения.
+\nИстория:\n${dialogue}\n\nJSON:`;
+
+    const raw = await this._generateText(prompt, {
+      temperature: 0.2,
+      top_p: 0.7,
+      max_new_tokens: 200
     });
 
-    const raw = await this._createChatCompletion(messages);
-
+    const jsonText = this._extractJson(raw);
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(jsonText);
       return {
         summary: parsed.summary || "",
-        keywords: parsed.keywords || []
+        keywords: Array.isArray(parsed.keywords) ? parsed.keywords : []
       };
     } catch (error) {
-      console.warn("Failed to parse summary, fallback to text", error);
-      return { summary: raw, keywords: [] };
+      console.warn("Failed to parse summary, fallback to text", error, raw);
+      return { summary: raw.trim(), keywords: [] };
     }
   }
 
-  async _createChatCompletion(messages) {
-    const response = await fetchFn("https://api.openai.com/v1/chat/completions", {
+  async generateAdaptiveInstruction({ history = [], summary = "", keywords = [] }) {
+    if (!history.length) return "";
+    const dialogue = history
+      .slice(-30)
+      .map((item) => `${item.role === "assistant" ? this.personaName : "Собеседник"}: ${item.text}`)
+      .join("\n");
+
+    const prompt = `Ты наставник для чат-бота-девушки по имени ${this.personaName}. На основе истории общения и имеющегося описания сформулируй 3-5 коротких правил (каждое с новой строки), которые помогут ей лучше поддерживать разговор именно с этим человеком.
+Используй конкретные наблюдения, но не раскрывай личные данные. Примеры правил: \"чаще говори о путешествиях\", \"замечай, когда собеседник устал\".
+Если информации мало, верни пустую строку.
+\nКраткое резюме: ${summary || "нет"}.
+Ключевые темы: ${(keywords || []).join(", ") || "нет"}.
+История:\n${dialogue}\n\nПравила:`;
+
+    const output = await this._generateText(prompt, {
+      temperature: 0.45,
+      top_p: 0.85,
+      max_new_tokens: 180
+    });
+    return output.trim();
+  }
+
+  async _generateText(prompt, parameters = {}) {
+    const response = await fetchFn(this.endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: this.model,
-        messages,
-        temperature: 0.8,
-        presence_penalty: 0.6,
-        frequency_penalty: 0.4
+        inputs: prompt,
+        parameters,
+        options: { wait_for_model: true }
       })
     });
 
+    const text = await response.text();
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenAI request failed: ${response.status} ${errorText}`);
+      throw new Error(`Hugging Face request failed: ${response.status} ${text}`);
     }
 
-    const data = await response.json();
-    const choices = (data && data.choices) || [];
-    const firstChoice = choices.length > 0 ? choices[0] : null;
-    const message = firstChoice && firstChoice.message ? firstChoice.message : null;
-    const choice = message && message.content ? message.content : null;
-    if (!choice) {
-      throw new Error("OpenAI response did not contain any content");
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      throw new Error(`Unexpected Hugging Face response: ${text}`);
     }
-    return choice.trim();
+
+    const outputs = Array.isArray(data) ? data : data && data.generated_text ? [data] : [];
+    if (!outputs.length || !outputs[0].generated_text) {
+      throw new Error(`Hugging Face response missing generated_text: ${text}`);
+    }
+
+    const generated = outputs[0].generated_text;
+    const stripped = generated.startsWith(prompt) ? generated.slice(prompt.length) : generated;
+    return stripped;
+  }
+
+  _extractJson(text) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start !== -1 && end !== -1 && end > start) {
+      return text.slice(start, end + 1);
+    }
+    return text;
   }
 }
 

@@ -32,6 +32,27 @@ function ask(question) {
   });
 }
 
+async function replyToEvent(event, message, options = {}) {
+  if (!message) {
+    return;
+  }
+
+  if (event?.message?.reply && typeof event.message.reply === "function") {
+    await event.message.reply({ message, ...options });
+    return;
+  }
+
+  const client = event?.client;
+  const getInputChat = event?.message?.getInputChat;
+
+  if (!client || typeof getInputChat !== "function") {
+    throw new Error("Unable to respond: Telegram client context is missing");
+  }
+
+  const entity = await getInputChat.call(event.message);
+  await client.sendMessage(entity, { message, ...options });
+}
+
 async function bootstrap() {
   const client = new TelegramClient(new StringSession(config.sessionString), config.apiId, config.apiHash, {
     connectionRetries: 5
@@ -119,7 +140,7 @@ async function handleCommand(text, event, chatId) {
     const reply = context.summary
       ? `Наши отношения: ${context.summary}\nКлючевые темы: ${context.keywords.join(", ")}`
       : "У меня пока нет собранного резюме, давай общаться больше!";
-    await event.respond(reply);
+    await replyToEvent(event, reply);
     memory.recordBotMessage(chatId, reply, { command: "summary" });
     return;
   }
@@ -127,13 +148,13 @@ async function handleCommand(text, event, chatId) {
   if (text.startsWith("/reset")) {
     memory.resetChat(chatId);
     const reply = "Я обновила нашу историю. Начнём с чистого листа!";
-    await event.respond(reply);
+    await replyToEvent(event, reply);
     memory.recordBotMessage(chatId, reply, { command: "reset" });
     return;
   }
 
   const reply = "Я пока не знаю такую команду, но с радостью продолжу разговор!";
-  await event.respond(reply);
+  await replyToEvent(event, reply);
   memory.recordBotMessage(chatId, reply, { command: "unknown" });
 }
 
@@ -148,13 +169,13 @@ async function respondWithAI(event, chatId) {
       keywords: context.keywords,
       instructions: adaptiveInstructions
     });
-    await event.respond(reply);
+    await replyToEvent(event, reply);
     memory.recordBotMessage(chatId, reply, { via: "auto" });
   } catch (error) {
     console.error("AI response failed", error);
     if (config.autoApprove) {
       const fallback = "Я немного занята, но обязательно вернусь с ответом позже.";
-      await event.respond(fallback);
+      await replyToEvent(event, fallback);
       memory.recordBotMessage(chatId, fallback, { via: "fallback" });
     }
   }

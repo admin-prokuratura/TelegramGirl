@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 
 const { DEFAULT_HUGGINGFACE_MODEL, resolveHuggingFaceModelName } = require("./constants");
 
-dotenv.config();
+dotenv.config({ override: true });
 
 function requireEnv(name) {
   const value = process.env[name];

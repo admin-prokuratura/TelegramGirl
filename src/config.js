@@ -31,5 +31,8 @@ module.exports = {
   sessionString: process.env.TELEGRAM_SESSION || "",
   phoneNumber: process.env.TELEGRAM_PHONE_NUMBER,
   password: process.env.TELEGRAM_PASSWORD,
-  autoApprove: process.env.AUTO_APPROVE_MESSAGES === "true"
+  autoApprove: process.env.AUTO_APPROVE_MESSAGES === "true",
+  personalChannelId: process.env.PERSONAL_CHANNEL_ID || "",
+  channelPostIntervalMs: Number(process.env.CHANNEL_POST_INTERVAL_MS || 1000 * 60 * 60 * 6),
+  channelMemoryFile: path.join(dataDir, process.env.CHANNEL_MEMORY_FILE || "channel.json")
 };

@@ -7,6 +7,7 @@ const config = require("./config");
 const MemoryStore = require("./memory");
 const AIClient = require("./ai-client");
 const InitiativeManager = require("./initiative");
+const { ChannelManager, ChannelStore } = require("./channel");
 
 const memory = new MemoryStore(config.memoryFile);
 const aiClient = new AIClient({
@@ -48,6 +49,22 @@ async function bootstrap() {
     intervalMs: config.proactiveIntervalMs
   });
   initiative.start();
+
+  if (config.personalChannelId) {
+    const channelStore = new ChannelStore(config.channelMemoryFile);
+    const channelManager = new ChannelManager({
+      client,
+      aiClient,
+      channelId: config.personalChannelId,
+      intervalMs: config.channelPostIntervalMs,
+      personaName: config.personaName,
+      store: channelStore
+    });
+    channelManager.start();
+    console.log("Channel manager enabled for", config.personalChannelId);
+  } else {
+    console.log("Channel manager disabled: PERSONAL_CHANNEL_ID is not set");
+  }
 
   console.log("Bot is up and running as", config.personaName);
 }

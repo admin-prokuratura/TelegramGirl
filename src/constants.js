@@ -1,11 +1,12 @@
 const DEFAULT_HUGGINGFACE_MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
 
 const HUGGINGFACE_MODEL_ALIASES = new Map([
-  ["mistralai/Mistral-7B-Instruct-v0.2", DEFAULT_HUGGINGFACE_MODEL]
+  ["mistralai/mistral-7b-instruct-v0.3", DEFAULT_HUGGINGFACE_MODEL],
+  ["mistralai/mistral-7b-instruct", DEFAULT_HUGGINGFACE_MODEL],
+  ["mistral-7b-instruct", DEFAULT_HUGGINGFACE_MODEL]
 ]);
 
 const HUGGINGFACE_MODEL_FALLBACKS = [
-  DEFAULT_HUGGINGFACE_MODEL,
   "mistralai/Mistral-7B-Instruct-v0.2",
   "HuggingFaceH4/zephyr-7b-beta"
 ];

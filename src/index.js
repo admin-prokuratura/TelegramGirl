@@ -25,9 +25,16 @@ function ask(question) {
 }
 
 async function bootstrap() {
-  const client = new TelegramClient(new StringSession(config.sessionString), config.apiId, config.apiHash, {
-    connectionRetries: 5
-  });
+  const clientOptions = { connectionRetries: 5 };
+  if (config.socksProxy) {
+    clientOptions.proxy = config.socksProxy;
+    console.log(
+      `Using SOCKS5 proxy ${config.socksProxy.host}:${config.socksProxy.port}` +
+        (config.socksProxy.username ? " (auth enabled)" : "")
+    );
+  }
+
+  const client = new TelegramClient(new StringSession(config.sessionString), config.apiId, config.apiHash, clientOptions);
 
   await client.start({
     phoneNumber: async () => config.phoneNumber || (await ask("Введите номер телефона: ")),
@@ -50,7 +57,7 @@ async function bootstrap() {
   });
   initiative.start();
 
-  if (config.personalChannelId) {
+  if (config.personalChannelId && config.channelEnabled) {
     const channelStore = new ChannelStore(config.channelMemoryFile);
     const channelManager = new ChannelManager({
       client,
@@ -58,12 +65,20 @@ async function bootstrap() {
       channelId: config.personalChannelId,
       intervalMs: config.channelPostIntervalMs,
       personaName: config.personaName,
-      store: channelStore
+      store: channelStore,
+      photoDirectory: config.channelPhotoDirectory
     });
     channelManager.start();
     console.log("Channel manager enabled for", config.personalChannelId);
+    if (config.channelPhotoDirectory) {
+      console.log("Channel photos directory:", config.channelPhotoDirectory);
+    }
   } else {
-    console.log("Channel manager disabled: PERSONAL_CHANNEL_ID is not set");
+    if (!config.personalChannelId) {
+      console.log("Channel manager disabled: PERSONAL_CHANNEL_ID is not set");
+    } else if (!config.channelEnabled) {
+      console.log("Channel manager disabled: CHANNEL_ENABLED is set to false");
+    }
   }
 
   console.log("Bot is up and running as", config.personaName);

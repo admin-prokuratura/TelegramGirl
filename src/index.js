@@ -76,7 +76,7 @@ async function onMessage(event) {
 
   const chatId = String(message.chatId);
   const sender = await message.getSender();
-  if (sender?.isSelf) {
+  if (sender && sender.isSelf) {
     memory.recordBotMessage(chatId, message.message, { outgoing: true });
     return;
   }

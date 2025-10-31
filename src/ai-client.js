@@ -182,7 +182,14 @@ class AIClient {
       throw new Error(`Unexpected Hugging Face response: ${text}`);
     }
 
-    const content = data?.choices?.[0]?.message?.content;
+    const choices = data && Array.isArray(data.choices) ? data.choices : [];
+    const firstChoice = choices.length > 0 ? choices[0] : undefined;
+    const content =
+      firstChoice &&
+      firstChoice.message &&
+      typeof firstChoice.message.content === "string"
+        ? firstChoice.message.content
+        : undefined;
     if (typeof content !== "string" || !content.trim()) {
       throw new Error(`Hugging Face response missing message content: ${text}`);
     }

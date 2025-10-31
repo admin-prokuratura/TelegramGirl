@@ -7,13 +7,21 @@ const config = require("./config");
 const MemoryStore = require("./memory");
 const AIClient = require("./ai-client");
 const InitiativeManager = require("./initiative");
+const SelfTrainer = require("./trainer");
 const { ChannelManager, ChannelStore } = require("./channel");
 
 const memory = new MemoryStore(config.memoryFile);
 const aiClient = new AIClient({
-  apiKey: config.openAIApiKey,
+  apiKey: config.huggingFaceApiKey,
   personaName: config.personaName,
-  personaDescription: config.personaDescription
+  personaDescription: config.personaDescription,
+  model: config.huggingFaceModel
+});
+const trainer = new SelfTrainer({
+  memory,
+  aiClient,
+  intervalMs: config.selfTrainingIntervalMs,
+  minMessages: config.selfTrainingMinMessages
 });
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -46,7 +54,8 @@ async function bootstrap() {
     aiClient,
     client,
     inactivityThresholdMs: config.inactivityThresholdMs,
-    intervalMs: config.proactiveIntervalMs
+    intervalMs: config.proactiveIntervalMs,
+    trainer
   });
   initiative.start();
 
@@ -131,11 +140,13 @@ async function handleCommand(text, event, chatId) {
 async function respondWithAI(event, chatId) {
   const context = memory.getContext(chatId);
   const history = memory.getHistory(chatId, 20);
+  const adaptiveInstructions = trainer.getInstructions(chatId);
   try {
     const reply = await aiClient.generateReply({
       history,
       summary: context.summary,
-      keywords: context.keywords
+      keywords: context.keywords,
+      instructions: adaptiveInstructions
     });
     await event.respond(reply);
     memory.recordBotMessage(chatId, reply, { via: "auto" });

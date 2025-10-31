@@ -1,7 +1,7 @@
 {
   "name": "telegram-girl-bot",
   "version": "1.0.0",
-  "description": "Autonomous Telegram companion bot built with GramJS and OpenAI",
+  "description": "Autonomous Telegram companion bot built with GramJS and Hugging Face",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"
@@ -10,7 +10,7 @@
     "telegram",
     "gramjs",
     "chatbot",
-    "openai"
+    "huggingface"
   ],
   "author": "",
   "license": "MIT",

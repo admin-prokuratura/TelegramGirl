@@ -1,10 +1,11 @@
 class InitiativeManager {
-  constructor({ memory, aiClient, client, inactivityThresholdMs, intervalMs }) {
+  constructor({ memory, aiClient, client, inactivityThresholdMs, intervalMs, trainer }) {
     this.memory = memory;
     this.aiClient = aiClient;
     this.client = client;
     this.inactivityThresholdMs = inactivityThresholdMs;
     this.intervalMs = intervalMs;
+    this.trainer = trainer;
     this.timer = null;
   }
 
@@ -32,13 +33,14 @@ class InitiativeManager {
 
       const history = this.memory.getHistory(chatId, 10);
       const mood = this._estimateMood(history);
+      const instructions = this.trainer ? this.trainer.getInstructions(chatId) : "";
       const prompt = await this.aiClient.generateReply({
         history,
         summary: chat.summary,
         keywords: chat.keywords,
         mood,
         instructions:
-          "Собеседник давно молчит. Сделай инициативное сообщение: напомни о приятном моменте беседы, предложи тему или вопрос, не будь навязчивой."
+          `${instructions ? `${instructions}\n` : ""}Собеседник давно молчит. Сделай инициативное сообщение: напомни о приятном моменте беседы, предложи тему или вопрос, не будь навязчивой.`
       });
 
       try {
